@@ -1,0 +1,122 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 1. Global Security Gate: Default Deny All
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 2. Global Helper Functions (Primitives)
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // 3. Validation Blueprints (Anti-Update-Gap)
+    function isValidPrivateInfo(data) {
+      return data.keys().hasAll(['email', 'updatedAt'])
+          && data.keys().size() == 2
+          && data.email is string
+          && data.email.size() <= 128
+          && data.updatedAt == request.time;
+    }
+
+    function isValidPublicProfile(data) {
+      return data.keys().hasAll(['userId', 'displayName', 'photoURL', 'updatedAt'])
+          && data.keys().size() == 4
+          && data.userId is string
+          && data.userId.size() <= 128
+          && data.displayName is string
+          && data.displayName.size() <= 128
+          && data.photoURL is string
+          && data.photoURL.size() <= 512
+          && data.updatedAt == request.time;
+    }
+
+    function isValidTask(data) {
+      return data.keys().hasAll([
+            'title', 'description', 'status', 'priority', 'dueDate', 
+            'category', 'ownerId', 'ownerName', 'assigneeId', 'assigneeName', 
+            'createdAt', 'updatedAt'
+          ])
+          && (data.keys().size() == 12 || (data.keys().size() == 13 && data.keys().hasAll(['id']) && data.id is string && data.id.size() <= 128))
+          && data.title is string && data.title.size() <= 200
+          && data.description is string && data.description.size() <= 4000
+          && (data.status == 'todo' || data.status == 'in_progress' || data.status == 'review' || data.status == 'done')
+          && (data.priority == 'low' || data.priority == 'medium' || data.priority == 'high')
+          && data.dueDate is string && data.dueDate.size() <= 128
+          && data.category is string && data.category.size() <= 128
+          && data.ownerId is string && data.ownerId.size() <= 128
+          && data.ownerName is string && data.ownerName.size() <= 200
+          && data.assigneeId is string && data.assigneeId.size() <= 128
+          && data.assigneeName is string && data.assigneeName.size() <= 200;
+    }
+
+    // 4. Secure Rules & Paths
+    // Private User PII - Only readable and writable by the user themselves
+    match /users/{userId}/private/info {
+      allow get: if isEmailVerified() && request.auth.uid == userId;
+      allow create, update: if isEmailVerified() && request.auth.uid == userId && isValidPrivateInfo(incoming());
+      allow delete: if isEmailVerified() && request.auth.uid == userId;
+    }
+
+    // Public Profiles - Readable by team/collaborators so they can assign, view, and search names
+    match /users/{userId}/public/profile {
+      allow get, list: if isEmailVerified();
+      allow create, update: if isEmailVerified() && request.auth.uid == userId && isValidPublicProfile(incoming());
+      allow delete: if isEmailVerified() && request.auth.uid == userId;
+    }
+
+    // Collaborative Tasks Collection
+    match /tasks/{taskId} {
+      // Direct get and list operations must force email-verified auth check, and evaluate secure attributes on the data
+      allow get, list: if isEmailVerified() && resource.data.ownerId != null;
+
+      // Create a task
+      allow create: if isEmailVerified() 
+                    && isValidId(taskId) 
+                    && isValidTask(incoming()) 
+                    && incoming().ownerId == request.auth.uid
+                    && incoming().createdAt == request.time
+                    && incoming().updatedAt == request.time;
+
+      // Update a task with exact state & field boundary enforcements
+      allow update: if isEmailVerified() 
+                    && isValidId(taskId)
+                    && isValidTask(incoming())
+                    && incoming().createdAt == existing().createdAt
+                    && incoming().ownerId == existing().ownerId
+                    && incoming().updatedAt == request.time
+                    && (
+                      // Tier 1: Task owner can modify any non-immutable fields
+                      (existing().ownerId == request.auth.uid) ||
+                      // Tier 2: Assigned member can only update progress status and assignee (e.g. self-assign or claim task status)
+                      (existing().assigneeId == request.auth.uid && 
+                        incoming().diff(existing()).affectedKeys().hasOnly(['status', 'assigneeId', 'assigneeName', 'updatedAt'])
+                      )
+                    );
+
+      // Only owner can delete a task
+      allow delete: if isEmailVerified() 
+                    && isValidId(taskId) 
+                    && existing().ownerId == request.auth.uid;
+    }
+  }
+}

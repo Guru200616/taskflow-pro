@@ -1,0 +1,138 @@
+{
+  "entities": {
+    "privateInfo": {
+      "title": "Private User Info",
+      "description": "Sensitive personal information accessible only to the owner",
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Primary email of the user"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when private info was updated"
+        }
+      },
+      "required": ["email", "updatedAt"]
+    },
+    "publicProfile": {
+      "title": "Public Profile",
+      "description": "Public-facing profile information accessible to all authenticated users",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Unique identifier of the user"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Display name/nickname"
+        },
+        "photoURL": {
+          "type": "string",
+          "description": "URL to the user profile image"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when public profile was updated"
+        }
+      },
+      "required": ["userId", "displayName", "photoURL", "updatedAt"]
+    },
+    "task": {
+      "title": "Task",
+      "description": "A single task item on the collaborative task board",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique ID of the task"
+        },
+        "title": {
+          "type": "string",
+          "description": "Title of the task"
+        },
+        "description": {
+          "type": "string",
+          "description": "Detailed description of the task"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["todo", "in_progress", "review", "done"],
+          "description": "Status of the task"
+        },
+        "priority": {
+          "type": "string",
+          "enum": ["low", "medium", "high"],
+          "description": "Priority of the task"
+        },
+        "dueDate": {
+          "type": "string",
+          "description": "Due date formatted as ISO string"
+        },
+        "category": {
+          "type": "string",
+          "description": "Category or label tag"
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "User ID of the task creator"
+        },
+        "ownerName": {
+          "type": "string",
+          "description": "Display name of the task creator"
+        },
+        "assigneeId": {
+          "type": "string",
+          "description": "User ID of the assigned user, empty if unassigned"
+        },
+        "assigneeName": {
+          "type": "string",
+          "description": "Display name of the assigned user"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when the task was created"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when the task was last updated"
+        }
+      },
+      "required": [
+        "title",
+        "description",
+        "status",
+        "priority",
+        "dueDate",
+        "category",
+        "ownerId",
+        "ownerName",
+        "assigneeId",
+        "assigneeName",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "users/{userId}/private/info": {
+      "schema": "privateInfo",
+      "description": "Private sensitive data of a given user"
+    },
+    "users/{userId}/public/profile": {
+      "schema": "publicProfile",
+      "description": "Public profile details of a given user"
+    },
+    "tasks/{taskId}": {
+      "schema": "task",
+      "description": "Tasks stored globally and collaborative in nature"
+    }
+  }
+}
